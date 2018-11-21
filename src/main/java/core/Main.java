@@ -2,7 +2,6 @@ package core;
 
 import caffe.Caffe;
 import caffe.Caffe.NetParameter;
-import caffe.CodeGenerator;
 
 import java.io.File;
 import java.io.FileWriter;

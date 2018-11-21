@@ -1,4 +1,4 @@
-package caffe;
+package core;
 
 import java.util.HashMap;
 
