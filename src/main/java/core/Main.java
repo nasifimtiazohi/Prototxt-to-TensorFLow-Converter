@@ -1,11 +1,13 @@
 package core;
 
 import caffe.Caffe;
+import caffe.Caffe.LayerParameter;
 import caffe.Caffe.NetParameter;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.List;
 
 import org.apache.commons.io.FileUtils;
 
@@ -60,6 +62,12 @@ public class Main {
 			e.printStackTrace();
 		}
 		
+		//helpful print
+//		List<LayerParameter> layers=netParameter.getLayerList();
+//		for (int i=0;i<layers.size();i++) {
+//			System.out.println(layers.get(i).getName());
+//		}
+		System.out.println("happy ending");
 	
 	}
 	private static void InstantiateOutputFiles() {
@@ -67,5 +75,5 @@ public class Main {
 		simpleOutput=new File("simple"+filenameWithoutExtension+".py");
 		multiplexingOutput=new File("multiplexing"+filenameWithoutExtension+".py");
 	}
-
+	
 }
