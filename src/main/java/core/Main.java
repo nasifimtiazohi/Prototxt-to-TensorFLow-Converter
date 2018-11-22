@@ -63,11 +63,17 @@ public class Main {
 		}
 		
 		//helpful print
-//		List<LayerParameter> layers=netParameter.getLayerList();
-//		for (int i=0;i<layers.size();i++) {
-//			System.out.println(layers.get(i).getName());
-//		}
 		System.out.println("happy ending");
+//		List<LayerParameter> layers=netParameter.getLayerList();
+//		for(int i=0;i<layers.size();i++) {
+//			LayerParameter layer=layers.get(i);
+//			if (layer.getType().equals("Convolution")) {
+//				System.out.println(layer);
+//			}
+//		}
+		for(int i=0;i<codeGen.errors.size();i++) {
+			System.out.println(codeGen.errors.get(i));
+		}
 	
 	}
 	private static void InstantiateOutputFiles() {
