@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import caffe.Caffe.ConvolutionParameter;
+import caffe.Caffe.DropoutParameter;
 import caffe.Caffe.LayerParameter;
 import caffe.Caffe.NetParameter;
 import caffe.Caffe.PoolingParameter;
@@ -42,11 +43,60 @@ public class CodeGenerator {
 		net=netParameter;
 		importStatements();
 		networkFunction();
+		commonCodeToAllModels();
+	}
+
+	private void commonCodeToAllModels() {
+		String code="\n\n\n"
+				+ "# The below code is applicable to any model. It is adapted from \n" + 
+				"# https://github.com/tensorflow/models/blob/master/research/slim/nets/inception_utils.py\n" + 
+				"def default_arg_scope(is_training=True, \n" + 
+				"                        weight_decay=0.00004,\n" + 
+				"                        use_batch_norm=True,\n" + 
+				"                        batch_norm_decay=0.9997,\n" + 
+				"                        batch_norm_epsilon=0.001,\n" + 
+				"                        batch_norm_updates_collections=tf.GraphKeys.UPDATE_OPS):\n" + 
+				"\n" + 
+				"  batch_norm_params = {\n" + 
+				"      # Decay for the moving averages.\n" + 
+				"      'decay': batch_norm_decay,\n" + 
+				"      # epsilon to prevent 0s in variance.\n" + 
+				"      'epsilon': batch_norm_epsilon,\n" + 
+				"      # collection containing update_ops.\n" + 
+				"      'updates_collections': batch_norm_updates_collections,\n" + 
+				"      # use fused batch norm if possible.\n" + 
+				"      'fused': None,\n" + 
+				"  }\n" + 
+				"  if use_batch_norm:\n" + 
+				"    normalizer_fn = slim.batch_norm\n" + 
+				"    normalizer_params = batch_norm_params\n" + 
+				"  else:\n" + 
+				"    normalizer_fn = None\n" + 
+				"    normalizer_params = {}\n" + 
+				"\n" + 
+				"  # Set training state \n" + 
+				"  with slim.arg_scope([slim.batch_norm, slim.dropout],\n" + 
+				"                        is_training=is_training):\n" + 
+				"    # Set weight_decay for weights in Conv and FC layers.\n" + 
+				"    with slim.arg_scope([slim.conv2d, slim.fully_connected],\n" + 
+				"                        weights_regularizer=slim.l2_regularizer(weight_decay)):\n" + 
+				"      # Set batch norm \n" + 
+				"      with slim.arg_scope(\n" + 
+				"          [slim.conv2d],\n" + 
+				"          normalizer_fn=normalizer_fn,\n" + 
+				"          normalizer_params=normalizer_params):\n" + 
+				"          # Set default padding and stride\n" + 
+				"            with slim.arg_scope([slim.conv2d, slim.max_pool2d],\n" + 
+				"                      stride=1, padding='SAME') as sc:\n" + 
+				"              return sc";
+		simpleTensorFlowPython+=code;
+		
 	}
 
 	private void networkFunction() {
 		String header=networkFunctionHeader();
 		String code=networkFunctionCode();
+		code+="return return_net,end_points";
 		code=tabSpaceAllLines(code);
 		simpleTensorFlowPython += header + "\n" +code + "\n";
 	}
@@ -219,6 +269,41 @@ public class CodeGenerator {
 		else if (layer.getType().equals("Pooling")) {
 			code+=createBranchedPoolingEndPoint(layer, parent, end_point);
 		}
+		else if(layer.getType().equals("Dropout")) {
+			DropoutParameter dorpoutParam=layer.getDropoutParam();
+			//left side
+			//TODO handle more than one bottom
+			String bottom="end_points['"+layer.getBottom(0)+"']";
+			code+=bottom;
+			
+			code+="=";
+			
+			//right side
+			code+="slim.dropout";
+			
+			List<String> arguments=new ArrayList<String>();
+			
+			arguments.add(bottom);
+			arguments.add(Float.toString(1-dorpoutParam.getDropoutRatio()));
+			arguments.add("scope='"+end_point+"'");
+			
+			code+=makeArgumentList(arguments);
+			
+			code+="\n";
+		}
+		else if(layer.getType().equals("Reshape")) {
+			//TODO learn squeezing
+			//left side
+			code+="return_net"; //fixed name for all squeeze op which will be returned eventually
+			
+			code+="=";
+			
+			//right side
+			code+="tf.squeeze("+parent.toLowerCase()+", [1,2], name='SpatialSqueeze')";
+			
+			code+="\n";
+			code+="end_points['return_net']="+parent.toLowerCase()+"\n";
+		}
 		return code;
 	}
 
@@ -263,6 +348,49 @@ public class CodeGenerator {
 			}
 			code+="])\n";
 		}
+		else if(layer.getType().equals("Softmax")) {
+//			//Softmax is probably the last layer
+//			//before writing it's own code,
+//			//Get the last convolution layer
+//			//and squeeze it
+//			//TODO learn squeezing
+//			LayerParameter lastConvolution=null;
+//			for(int i=net.getLayerList().size()-1;i>=0;i--) {
+//				if(net.getLayerList().get(i).getType().equals("Convolution")) {
+//					lastConvolution=net.getLayerList().get(i);
+//					break;
+//				}
+//			}
+//			String lastConvolution_endPoint=null;
+//			if (lastConvolution.getName().contains("/")) {
+//				String[] temp=lastConvolution.getName().split("/");
+//				//TODO remove lowercases from everywhere to remove confusion
+//				lastConvolution_endPoint=temp[temp.length-2];
+//			}
+//			else {
+//				lastConvolution_endPoint=lastConvolution.getName();
+//			}
+//			code+="return_net=tf.squeeze("+lastConvolution_endPoint+", [1,2], name='SpatialSqueeze')\n";
+//			code+="end_points['"+lastConvolution_endPoint+"']= return_net\n";
+			
+			//softmax own code
+			//left side
+			code+="end_points['"+layer.getName()+"']";
+			
+			code+="=";
+			
+			//right side
+			code+="slim.softmax";
+			
+			List<String> arguments=new ArrayList<String>();
+			
+			//TODO handle more than one bottom error
+			arguments.add(layer.getBottom(0));
+			arguments.add("scope='"+layer.getTop(0)+"'");
+			code+=makeArgumentList(arguments);
+			
+			code+="\n";
+		}
 		return code;
 	}
 
@@ -297,14 +425,24 @@ public class CodeGenerator {
 			s+=Integer.toString(typeParam.getKernelH());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize(0));
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+=",";
 		if (typeParam.hasKernelW()) {
 			s+=Integer.toString(typeParam.getKernelW());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize(0));
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+="]";
 		arguments.add(s);
@@ -366,14 +504,24 @@ public class CodeGenerator {
 			s+=Integer.toString(typeParam.getKernelH());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize(0));
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+=",";
 		if (typeParam.hasKernelW()) {
 			s+=Integer.toString(typeParam.getKernelW());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize(0));
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+="]";
 		arguments.add(s);
@@ -386,7 +534,7 @@ public class CodeGenerator {
 		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
 		
 		//scope
-		arguments.add("scope='"+layer.getName()+"'");
+		arguments.add("scope='"+layer.getTop(0)+"'");
 		
 		//make slim call
 		code+="slim.conv2d";
@@ -429,14 +577,24 @@ public class CodeGenerator {
 			s+=Integer.toString(typeParam.getKernelH());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize());
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+=",";
 		if (typeParam.hasKernelW()) {
 			s+=Integer.toString(typeParam.getKernelW());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize());
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+="]";
 		arguments.add(s);
@@ -445,7 +603,7 @@ public class CodeGenerator {
 		arguments.add("stride="+Integer.toString(typeParam.getStride()));
 		
 		//scope
-		arguments.add("scope='"+layer.getName()+"'");
+		arguments.add("scope='"+layer.getTop(0)+"'");
 		
 		//make slim call
 		code+="slim.max_pool2d";
@@ -479,14 +637,24 @@ public class CodeGenerator {
 			s+=Integer.toString(typeParam.getKernelH());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize());
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+=",";
 		if (typeParam.hasKernelW()) {
 			s+=Integer.toString(typeParam.getKernelW());
 		}
 		else {
-			s+=Integer.toString(typeParam.getKernelSize());
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
 		}
 		s+="]";
 		arguments.add(s);
