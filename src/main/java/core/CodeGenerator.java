@@ -86,34 +86,11 @@ public class CodeGenerator {
 		for (int i=0;i<layers.size();i++) {
 			LayerParameter layer=layers.get(i);
 			
-			if (layer.getType().equals("Input")) {
-				//TODO
+			if (layer.getName().contains("/")==false){
+				code+=createSimpleLayer(layer);
 			}
-			else if (layer.getType().equals("Convolution")) {
-				
-				// not a component, no branching
-				if (layer.getName().contains("/")==false){ 
-					code+=createSimpleConvolutionEndPoint(layer);
-				}
-				else {
-					code+=createBranchedConvolutionEndPoint(layer);
-				}
-			}
-			else if (layer.getType().equals("BatchNorm")) {
-				continue;
-			}
-			else if (layer.getType().equals("Scale")) {
-				continue;
-			}
-			else if (layer.getType().equals("ReLU")) {
-				continue;
-			}
-			else if (layer.getType().equals("Pooling")) {
-				
-				// not a component, no branching
-				if (layer.getName().contains("/")==false){ 
-					code+=createSimplePoolingEndPoint(layer);
-				}
+			else {
+				code+=createBranchedlayer(layer);
 			}
 			
 		}
@@ -122,7 +99,31 @@ public class CodeGenerator {
 		return code;
 	}
 	
-	private String createBranchedConvolutionEndPoint(LayerParameter layer) {
+	private String createBranchedlayer(LayerParameter layer) {
+		String code="";
+		if (layer.getType().equals("Input")) {
+			//TODO
+		}
+		else if (layer.getType().equals("Convolution")) {
+			code+=createBranchedEndPoint(layer);
+		}
+		else if (layer.getType().equals("BatchNorm")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Scale")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("ReLU")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Pooling")) {
+			code+=createBranchedEndPoint(layer);
+		}
+		return code;
+		
+	}
+
+	private String createBranchedEndPoint(LayerParameter layer) {
 		String[] parts=layer.getName().split("/");
 		String root=parts[0];
 		
@@ -144,18 +145,16 @@ public class CodeGenerator {
 		return code;
 	}
 
-
 	private String recursion(String current, String stop, String code) {
 		
 		String[] parts=current.split("/"); 
 		//TODO handle error cases
 		String end_point=parts[parts.length-1];
 		
-		
 		List<LayerParameter> matched=new ArrayList<LayerParameter>();
 		for (int i=0;i<net.getLayerList().size();i++) {
 			LayerParameter layer=net.getLayerList().get(i); 
-			if (layer.getName().contains(current)  && layer.getType().equals("Convolution")){
+			if (layer.getName().contains(current)){
 				matched.add(layer);
 			}	
 		}
@@ -172,13 +171,160 @@ public class CodeGenerator {
 					
 				}
 			}
+			
+			//look if the current layer also exists without any branching
+			for (int i=0;i<net.getLayerList().size();i++) {
+				LayerParameter layer=net.getLayerList().get(i); 
+				if (layer.getName().contains(current.subSequence(0, current.length()-1))){
+					//work with the layer
+					variableScopeCode+=createSimpleLayer(layer);
+					break;
+				}	
+			}
+			
 			code+=variableScopeHeader+"\n"+tabSpaceAllLines(variableScopeCode)+"\n";
 			
 		}
 		else {
 			String parent=parts[parts.length-2];
-			code += parent.toLowerCase()+"= slim.conv2d()\n";
+			String layerName=current.substring(0,current.length()-1);
+			LayerParameter layer=null;
+			for (int i=0;i<net.getLayerList().size();i++) {
+				//TODO inefficient
+				if (net.getLayer(i).getName().equals(layerName)) {
+					layer=net.getLayer(i);
+					break;
+				}
+			}
+			code+=createBranchedEndPoint(layer,parent,end_point);
 		}
+		return code;
+	}
+
+
+	private String createBranchedEndPoint(LayerParameter layer, String parent, String end_point) {
+		String code="";
+		if (layer.getType().equals("Convolution")) {
+			code+=createBranchedConvolutionEndPoint(layer, parent, end_point);
+		}
+		else if (layer.getType().equals("BatchNorm")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Scale")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("ReLU")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Pooling")) {
+			code+=createBranchedPoolingEndPoint(layer, parent, end_point);
+		}
+		return code;
+	}
+
+	private String createSimpleLayer(LayerParameter layer) {
+		String code="";
+		if (layer.getType().equals("Input")) {
+			//TODO
+		}
+		else if (layer.getType().equals("Convolution")) {
+			code+=createSimpleConvolutionEndPoint(layer);
+		}
+		else if (layer.getType().equals("BatchNorm")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Scale")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("ReLU")) {
+			//do nothing
+		}
+		else if (layer.getType().equals("Pooling")) {
+			code+=createSimplePoolingEndPoint(layer);
+		}
+		else if(layer.getType().equals("Concat")) {
+			//left side
+			code+="end_points['"+layer.getName()+"']";
+			
+			code+="=";
+			
+			//right side
+			code+="tf.concat(axis=3,values=[";
+			List<String> bottomList=layer.getBottomList();
+			for (int i=0;i<bottomList.size();i++) {
+				String name=bottomList.get(i);
+				// assuming bottoms would be branches 
+				//TODO add error
+				name=name.split("/")[1];
+				code+=name.toLowerCase();
+				if(i<bottomList.size()-1) {
+					code+=",";
+				}
+			}
+			code+="])";
+		}
+		return code;
+	}
+
+	private String createBranchedConvolutionEndPoint(LayerParameter layer, String parent,String end_point) {
+		
+		ConvolutionParameter typeParam=layer.getConvolutionParam();
+		
+		//left side 
+		String code=parent.toLowerCase();
+		
+		code+="=";
+		
+		//right side
+		//sequence in arguments is important
+		List<String> arguments=new ArrayList<String>();
+		 
+		//add bottom 
+		//assuming bottom would be only one for Convolution Layer
+		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		arguments.add(bottom);
+		
+		//add num_of_output
+		arguments.add(Integer.toString(typeParam.getNumOutput()));
+		
+		//kernel dimension
+		//assuming only one kernel size
+		if (typeParam.getKernelSizeCount()!=1) {
+			errors.add("more than one kernel size for: "+layer.getName());
+		}
+		String s="[";
+		if (typeParam.hasKernelH()) {
+			s+=Integer.toString(typeParam.getKernelH());
+		}
+		else {
+			s+=Integer.toString(typeParam.getKernelSize(0));
+		}
+		s+=",";
+		if (typeParam.hasKernelW()) {
+			s+=Integer.toString(typeParam.getKernelW());
+		}
+		else {
+			s+=Integer.toString(typeParam.getKernelSize(0));
+		}
+		s+="]";
+		arguments.add(s);
+		
+		//stride
+		//assuming single stride
+		if (typeParam.getStrideList().size()!=1) {
+			errors.add("more than one stride for: "+layer.getName());
+		}
+		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		
+		//scope
+		arguments.add("scope='"+end_point+"'");
+		
+		//make slim call
+		code+="slim.conv2d";
+		
+		code+=makeArgumentList(arguments);
+		
+		code+="\n";
 		return code;
 	}
 
@@ -243,12 +389,7 @@ public class CodeGenerator {
 		arguments.add("scope='"+layer.getName()+"'");
 		
 		//make slim call
-		if (layer.getType().equals("Convolution")) {
-			code+="slim.conv2d";
-		}
-		else if (layer.getType().equals("Pooling")) {
-			code+="slim.max_pool2d";
-		}
+		code+="slim.conv2d";
 		
 		code+=makeArgumentList(arguments);
 		
@@ -257,6 +398,14 @@ public class CodeGenerator {
 	}
 
 	private String createSimplePoolingEndPoint(LayerParameter layer) {
+		//check if end_point already exists
+		if (end_points.contains(layer.getName())) {
+			return "";
+		}
+		else {
+			end_points.add(layer.getName());
+		}
+		
 		PoolingParameter typeParam=layer.getPoolingParam();
 		
 		//left side 
@@ -299,19 +448,63 @@ public class CodeGenerator {
 		arguments.add("scope='"+layer.getName()+"'");
 		
 		//make slim call
-		if (layer.getType().equals("Convolution")) {
-			code+="slim.conv2d";
-		}
-		else if (layer.getType().equals("Pooling")) {
-			code+="slim.max_pool2d";
-		}
+		code+="slim.max_pool2d";
 		
 		code+=makeArgumentList(arguments);
 		
 		code+="\n";
 		return code;
 	}
-	
+	private String createBranchedPoolingEndPoint(LayerParameter layer, String parent,String end_point) {
+		PoolingParameter typeParam=layer.getPoolingParam();
+		
+		//left side 
+		String code=parent.toLowerCase();
+		
+		code+="=";
+		
+		//right side
+		//sequence in arguments is important
+		List<String> arguments=new ArrayList<String>();
+		 
+		//add bottom 
+		//assuming bottom would be only one for Convolution Layer
+		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		arguments.add(bottom);
+		
+		
+		//kernel dimension
+		String s="[";
+		if (typeParam.hasKernelH()) {
+			s+=Integer.toString(typeParam.getKernelH());
+		}
+		else {
+			s+=Integer.toString(typeParam.getKernelSize());
+		}
+		s+=",";
+		if (typeParam.hasKernelW()) {
+			s+=Integer.toString(typeParam.getKernelW());
+		}
+		else {
+			s+=Integer.toString(typeParam.getKernelSize());
+		}
+		s+="]";
+		arguments.add(s);
+		
+		//stride
+		arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		
+		//scope
+		arguments.add("scope='"+end_point+"'");
+		
+		//make slim call
+		code+="slim.max_pool2d";
+		
+		code+=makeArgumentList(arguments);
+		
+		code+="\n";
+		return code;
+	}
 	private String makeArgumentList(List<String> arguments) {
 		String code="(";
 		
