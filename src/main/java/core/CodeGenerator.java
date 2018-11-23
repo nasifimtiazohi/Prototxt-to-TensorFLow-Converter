@@ -138,7 +138,7 @@ public class CodeGenerator {
 		String code="end_point='"+root+"'\n";
 		
 		//recursive code
-		code+=recursion(root+"/",parts[parts.length-1],code);
+		code=recursion(root+"/",parts[parts.length-1],code);
 		
 		
 		return code;
@@ -146,17 +146,16 @@ public class CodeGenerator {
 
 
 	private String recursion(String current, String stop, String code) {
-		System.out.println("debug code:"+code);
 		
 		String[] parts=current.split("/"); 
 		//TODO handle error cases
 		String end_point=parts[parts.length-1];
 		
+		
 		List<LayerParameter> matched=new ArrayList<LayerParameter>();
 		for (int i=0;i<net.getLayerList().size();i++) {
-			LayerParameter layer=net.getLayerList().get(i);
+			LayerParameter layer=net.getLayerList().get(i); 
 			if (layer.getName().contains(current)  && layer.getType().equals("Convolution")){
-				System.out.println("debug"+current);
 				matched.add(layer);
 			}	
 		}
@@ -169,22 +168,17 @@ public class CodeGenerator {
 				root=current+root;
 				if (end_points.contains(root)==false) {
 					end_points.add(root);
-					variableScopeCode+=recursion(root+"/", stop, variableScopeCode);
-				}
-				else {
-					return code;
+					variableScopeCode=recursion(root+"/", stop, variableScopeCode);
+					
 				}
 			}
-			variableScopeCode=tabSpaceAllLines(variableScopeCode);
-			code+=variableScopeHeader+"\n"+variableScopeCode+"\n";
+			code+=variableScopeHeader+"\n"+tabSpaceAllLines(variableScopeCode)+"\n";
 			
 		}
 		else {
-			//TODO handle error cases
 			String parent=parts[parts.length-2];
 			code += parent.toLowerCase()+"= slim.conv2d()\n";
 		}
-		
 		return code;
 	}
 
