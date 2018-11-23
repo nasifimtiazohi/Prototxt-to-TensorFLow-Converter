@@ -261,7 +261,7 @@ public class CodeGenerator {
 					code+=",";
 				}
 			}
-			code+="])";
+			code+="])\n";
 		}
 		return code;
 	}
