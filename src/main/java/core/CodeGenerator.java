@@ -17,6 +17,7 @@ public class CodeGenerator {
     private NetParameter net;
     public List<String> errors;
     private List<String> end_points;
+    private String input;
     public CodeGenerator() {
 		setSimpleTensorFlowPython("");
 		setMultiplexingTensorFlowPython("");
@@ -97,7 +98,7 @@ public class CodeGenerator {
 	private void networkFunction() {
 		String header=networkFunctionHeader();
 		String code=networkFunctionCode();
-		code+="return return_net,end_points";
+		code+="return Logit,end_points";
 		code=tabSpaceAllLines(code);
 		simpleTensorFlowPython += header + "\n" +code + "\n";
 	}
@@ -131,7 +132,7 @@ public class CodeGenerator {
 		
 		//assuming one input has been specified
 		if (net.getInputCount()==1) {
-			code+="end_points['"+net.getInput(0)+"']="+net.getInput(0)+"\n";
+			code+="end_points['"+input+"']="+input+"\n";
 		}
 		
 		for (int i=0;i<layers.size();i++) {
@@ -295,7 +296,7 @@ public class CodeGenerator {
 		else if(layer.getType().equals("Reshape")) {
 			//TODO learn squeezing
 			//left side
-			code+="return_net"; //fixed name for all squeeze op which will be returned eventually
+			code+="Logit"; //fixed name for all squeeze op which will be returned eventually
 			
 			code+="=";
 			
@@ -303,7 +304,7 @@ public class CodeGenerator {
 			code+="tf.squeeze("+parent.toLowerCase()+", [1,2], name='SpatialSqueeze')";
 			
 			code+="\n";
-			code+="end_points['return_net']="+parent.toLowerCase()+"\n";
+			code+="end_points['Logit']="+parent.toLowerCase()+"\n";
 		}
 		return code;
 	}
@@ -371,8 +372,8 @@ public class CodeGenerator {
 //			else {
 //				lastConvolution_endPoint=lastConvolution.getName();
 //			}
-//			code+="return_net=tf.squeeze("+lastConvolution_endPoint+", [1,2], name='SpatialSqueeze')\n";
-//			code+="end_points['"+lastConvolution_endPoint+"']= return_net\n";
+//			code+="Logit=tf.squeeze("+lastConvolution_endPoint+", [1,2], name='SpatialSqueeze')\n";
+//			code+="end_points['"+lastConvolution_endPoint+"']= Logit\n";
 			
 			//softmax own code
 			//left side
@@ -728,7 +729,7 @@ public class CodeGenerator {
 		//Input can be passed as input parameter of the network
 		//Or, can be passed a layer of type "input"
 		//First, let us search if there is any explicit input parameter
-		String input = null;
+		input = null;
 		int input_count=net.getInputCount();
 		if (input_count == 1) {
 			input=net.getInput(0);
@@ -749,6 +750,7 @@ public class CodeGenerator {
 			//Limitation: cannot handle more than one input
 			errors.add(input);
 		}
+		
 		arguments.add(input);
 		
 		//Get the num_output of last output layer (convolution or innerproduct)
