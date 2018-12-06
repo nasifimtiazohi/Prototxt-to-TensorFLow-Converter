@@ -6,6 +6,7 @@ import java.util.List;
 
 import caffe.Caffe.ConvolutionParameter;
 import caffe.Caffe.DropoutParameter;
+import caffe.Caffe.InnerProductParameter;
 import caffe.Caffe.LayerParameter;
 import caffe.Caffe.NetParameter;
 import caffe.Caffe.PoolingParameter;
@@ -724,27 +725,60 @@ public class CodeGenerator {
 		
 		String name=net.getName();
 		
-		String input;
+		//Input can be passed as input parameter of the network
+		//Or, can be passed a layer of type "input"
+		//First, let us search if there is any explicit input parameter
+		String input = null;
 		int input_count=net.getInputCount();
 		if (input_count == 1) {
 			input=net.getInput(0);
 		}
-		else {
-			input="error: more than one input found";
+		else if (input_count==0) {
+			// Input might be passed as a layer
+			List<LayerParameter> layers=net.getLayerList();
+			for (int i=0;i<layers.size();i++) {
+				LayerParameter layer=layers.get(i);
+				if (layer.getType().equals("Input")) {
+					input=layer.getName();
+					break;
+				}
+			}
+		}
+		else{
+			input="error: a single input could not be found";
+			//Limitation: cannot handle more than one input
 			errors.add(input);
 		}
 		arguments.add(input);
 		
-		String output_count="num_classes=1000"; 
-		arguments.add(output_count);
+		//Get the num_output of last output layer (convolution or innerproduct)
+		int output_count=0;
+		List<LayerParameter> layers=net.getLayerList();
+		for (int i=layers.size()-1;i>=0;i--) {
+			LayerParameter layer=layers.get(i);
+			if (layer.getType().equals("Convolution") ) {
+				ConvolutionParameter convParam = layer.getConvolutionParam();
+				output_count=convParam.getNumOutput();
+				break;
+			}
+			else if (layer.getType().equals("InnerProduct")) {
+				InnerProductParameter innerProdParam = layer.getInnerProductParam();
+				output_count=innerProdParam.getNumOutput();
+				break;
+			}
+		}
+		String num_classes="num_classes="+Integer.toString(output_count);
+		arguments.add(num_classes);
 		
+		//Hardcoded assumption
 		String train_or_test="is_training=true";
 		arguments.add(train_or_test);
 		
+		//Hardcoded assumption
 		String variableReuse="reuse=true";
 		arguments.add(variableReuse);
 		
-		
+		//Scope is the network name itself
 		String scope="scope="+name;
 		arguments.add(scope);
 		

@@ -16,6 +16,7 @@ import com.google.protobuf.TextFormat;
 import com.google.protobuf.TextFormat.ParseException;
 
 public class Main {
+	//TODO: take input filename from command line argument
 	static String inputFileName="deploy.prototxt";
 	static String prototxtInput;
 	static File simpleOutput;
@@ -32,6 +33,7 @@ public class Main {
 		}
 		
 		//TODO: identify which type of file? deploy/solver/train_val?
+		//TODO: if not deploy type then reject
 		
 		CodeGenerator codeGen= new CodeGenerator();
 		
