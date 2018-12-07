@@ -2,6 +2,7 @@ package core;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 
 import caffe.Caffe.ConvolutionParameter;
@@ -18,6 +19,7 @@ public class CodeGenerator {
     public List<String> errors;
     private List<String> end_points;
     private String input;
+    List<LayerParameter> Unhandled_Layers;
     public CodeGenerator() {
 		setSimpleTensorFlowPython("");
 		setMultiplexingTensorFlowPython("");
@@ -43,6 +45,7 @@ public class CodeGenerator {
 
 	public void generateNetworkCode(NetParameter netParameter) {
 		net=netParameter;
+		Unhandled_Layers=new ArrayList(net.getLayerList()); //to use iterator remove 
 		importStatements();
 		networkFunction();
 		commonCodeToAllModels();
@@ -128,29 +131,122 @@ public class CodeGenerator {
 	private String argumentScope() {
 		String code="end_points= {}\n";
 		
-		List<LayerParameter> layers=net.getLayerList();
+		//when we handle a layer, we will remove that item from this list
 		
-		//assuming one input has been specified
+		
+		//Handle input
+		// create the first end_point for input
 		if (net.getInputCount()==1) {
 			code+="end_points['"+input+"']="+input+"\n";
 		}
+		//check if any layer is of type input. if yes, remove it as handle
+		Iterator<LayerParameter> it= Unhandled_Layers.iterator();
+		while(it.hasNext()) {
+			LayerParameter entry=it.next();
+			if (entry.getType().equals("Input")) {
+				it.remove();
+			}
+		}
 		
-		for (int i=0;i<layers.size();i++) {
-			LayerParameter layer=layers.get(i);
+		//remove all layers of type BatchNorm, Scale, ReLU
+		//Limitation: we ignore the above three layers
+		it=Unhandled_Layers.iterator();
+		while(it.hasNext()) {
+			LayerParameter entry=it.next();
+			if(entry.getType().equals("BatchNorm") || entry.getType().equals("Scale") || entry.getType().equals("ReLU")) {
+				it.remove();
+			}
+		}
+		
+		//Note: bottom means input of a layer, top means the own layer
+		//Confusion: Assuming top_count will always one
+		
+		//start with input as bottom
+		String bottom=input;
+	
+		while (Unhandled_Layers.size()>0) {
 			
-			if (layer.getName().contains("/")==false){
-				code+=createSimpleLayer(layer);
+			List<LayerParameter> curLayers=new ArrayList<LayerParameter>();
+			
+			for(int i=0;i<Unhandled_Layers.size();i++) {
+				LayerParameter layer=Unhandled_Layers.get(i);
+				List<String> bottomList=layer.getBottomList();
+				for (int j=0;j<bottomList.size();j++) {
+					if (bottomList.get(j).equals(bottom)) {
+						curLayers.add(layer);
+						break;
+					}
+				}
+			}
+			
+			//Limitation: assume input goes to only one layer?
+			
+			if (curLayers.size()==1) {
+				LayerParameter layer=curLayers.get(0);
+				if (layer.getType().equals("Concat")) {
+					//TODO
+				}
+				else {
+					// simple layer :has only one input that also does not go to any other layer
+					code+=createSimpleLayer(layer);
+					bottom=layer.getTop(0);
+				}
+			}
+			else if(curLayers.size()>1) {
+				
 			}
 			else {
-				code+=createBranchedlayer(layer);
+				System.out.println("debug what happend");
+				break;
 			}
 			
+			
 		}
+		
+		
+		
+		
+		
+		//OLD CODE
+//		List<LayerParameter> layers = net.getLayerList();
+//		for (int i=0;i<layers.size();i++) {
+//			// search for how many layers take current bottom as top
+//			LayerParameter layer=layers.get(i);
+//			
+//			if (layer.getName().contains("/")==false){
+//				code+=createSimpleLayer(layer);
+//			}
+//			else {
+//				code+=createBranchedlayer(layer);
+//			}
+//		}
+//		
+//		//TODO check how many
+//		for (int i=0;i<layers.size();i++) {
+//			LayerParameter layer=layers.get(i);
+//			
+//			if (layer.getName().contains("/")==false){
+//				code+=createSimpleLayer(layer);
+//			}
+//			else {
+//				code+=createBranchedlayer(layer);
+//			}
+//			
+//		}
 		
 		
 		return code;
 	}
 	
+	private void removeHandledLayer(LayerParameter layer) {
+		Iterator<LayerParameter> i= Unhandled_Layers.iterator();
+		while (i.hasNext()) {
+			if (i.next().equals(layer)) {
+				i.remove();
+			}
+		}		
+	}
+
 	private String createBranchedlayer(LayerParameter layer) {
 		String code="";
 		if (layer.getType().equals("Input")) {
