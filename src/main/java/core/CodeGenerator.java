@@ -7,6 +7,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import caffe.Caffe.BlobShape;
 import caffe.Caffe.ConvolutionParameter;
 import caffe.Caffe.DropoutParameter;
 import caffe.Caffe.InnerProductParameter;
@@ -64,7 +65,22 @@ public class CodeGenerator {
 		
 		importStatements();
 		networkFunction();
+		changeImageSize();
 		commonCodeToAllModels();
+	}
+
+	private void changeImageSize() {
+		String code ="\n \n ### change the default image_size based on the input image size specified in prototxt ### \n";
+		
+		List<BlobShape> blobs=net.getInputShapeList();
+		BlobShape blob=blobs.get(blobs.size()-1);
+		List<Long> dims=blob.getDimList();
+		Long dim=dims.get(blob.getDimCount()-1);
+		
+		code+= net.getName()+".default_image_size = "+Long.toString(dim);
+		
+		simpleTensorFlowPython+=code;
+		
 	}
 
 	private void commonCodeToAllModels() {
