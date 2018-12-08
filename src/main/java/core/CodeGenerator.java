@@ -1,6 +1,7 @@
 package core;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -20,6 +21,7 @@ public class CodeGenerator {
     private List<String> end_points;
     private String input;
     List<LayerParameter> Unhandled_Layers;
+
     public CodeGenerator() {
 		setSimpleTensorFlowPython("");
 		setMultiplexingTensorFlowPython("");
@@ -166,18 +168,7 @@ public class CodeGenerator {
 	
 		while (Unhandled_Layers.size()>0) {
 			
-			List<LayerParameter> curLayers=new ArrayList<LayerParameter>();
-			
-			for(int i=0;i<Unhandled_Layers.size();i++) {
-				LayerParameter layer=Unhandled_Layers.get(i);
-				List<String> bottomList=layer.getBottomList();
-				for (int j=0;j<bottomList.size();j++) {
-					if (bottomList.get(j).equals(bottom)) {
-						curLayers.add(layer);
-						break;
-					}
-				}
-			}
+			List<LayerParameter> curLayers=getAllBottoms(bottom);
 			
 			//Limitation: assume input goes to only one layer?
 			
@@ -189,11 +180,17 @@ public class CodeGenerator {
 				else {
 					// simple layer :has only one input that also does not go to any other layer
 					code+=createSimpleLayer(layer);
+					//this layer is now handled
+					removeHandledLayer(layer);
+					//update bottom
 					bottom=layer.getTop(0);
 				}
 			}
 			else if(curLayers.size()>1) {
-				
+				System.out.println(bottom);
+				//Branching
+				code+=createNewBranch(curLayers,"");
+				break;
 			}
 			else {
 				System.out.println("debug what happend");
@@ -238,10 +235,102 @@ public class CodeGenerator {
 		return code;
 	}
 	
+	private List<LayerParameter> getAllBottoms(String bottom) {
+		
+		List<LayerParameter> curLayers=new ArrayList<LayerParameter>();
+		
+		for(int i=0;i<Unhandled_Layers.size();i++) {
+			LayerParameter layer=Unhandled_Layers.get(i);
+			List<String> bottomList=layer.getBottomList();
+			for (int j=0;j<bottomList.size();j++) {
+				if (bottomList.get(j).equals(bottom)) {
+					curLayers.add(layer);
+					break;
+				}
+			}
+		}
+		
+		return curLayers;
+	}
+	
+
+	private String createNewBranch( List<LayerParameter> layers, String code) {
+		
+		String mixed_scope_header="";
+		String mixed_scope_code="";
+		
+		LayerParameter concatLayer=null;
+		
+		//check all layers that are branched out
+		for (int i=0;i<layers.size();i++) {
+			String branch_name= "branch_"+Integer.toString(i);
+			System.out.println(branch_name);
+			String branch_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(branch_name))+"\n";
+			String branch_scope_code="";
+			
+			LayerParameter layer=layers.get(i);
+			
+			String bottom = layer.getName();
+			
+			List<LayerParameter> curLayers=getAllBottoms(bottom);
+			
+			//remove concat layer if any from this and set it to global concat
+			Iterator<LayerParameter> it=curLayers.iterator();
+			while(it.hasNext()) {
+				LayerParameter entry=it.next();
+				if (entry.getType().equals("Concat")) {
+					concatLayer=entry;
+					it.remove();
+				}
+			}
+			//add one layer for thyself
+			String scope=null;
+			if (layer.getName().contains("/")) {
+				// TODO check for all type of invalid variable naming in python
+				String[] temp=layer.getName().split("/");
+				scope=temp[temp.length-1];
+			}
+			else {
+				// if no slash there 
+				scope=layer.getName();
+			}
+			branch_scope_code += createSimpleLayer(layer, branch_name,scope);
+			
+			if (curLayers.size()==1) {
+				//no further chaining
+				LayerParameter branch=curLayers.get(0);
+				//TODO boilerplat code
+				scope=null;
+				if (branch.getName().contains("/")) {
+					// TODO check for all type of invalid variable naming in python
+					String[] temp=branch.getName().split("/");
+					scope=temp[temp.length-1];
+				}
+				else {
+					// if no slash there 
+					scope=branch.getName();
+				}
+				branch_scope_code += createSimpleLayer(branch,branch_name, scope);
+			}
+			
+			
+			mixed_scope_code+=branch_scope_header+tabSpaceAllLines(branch_scope_code)+"\n";
+			
+		}
+		
+		//end with concating the layers
+		String root=concatLayer.getName();
+		mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(root))+'\n';
+		code+= mixed_scope_header+ tabSpaceAllLines(mixed_scope_code) + "\n";
+		
+		return code;
+	}
+
 	private void removeHandledLayer(LayerParameter layer) {
 		Iterator<LayerParameter> i= Unhandled_Layers.iterator();
 		while (i.hasNext()) {
-			if (i.next().equals(layer)) {
+			LayerParameter entry=i.next();
+			if (entry.equals(layer)) {
 				i.remove();
 			}
 		}		
@@ -405,6 +494,59 @@ public class CodeGenerator {
 		return code;
 	}
 
+	private String createSimpleLayer(LayerParameter layer, String name,  String bottom, String scope ) {
+		String code="";
+		if (layer.getType().equals("Convolution")) {
+			code+=createSimpleConvolutionEndPoint(layer,name,bottom,scope);
+		}
+		else if (layer.getType().equals("Pooling")) {
+			code+=createSimplePoolingEndPoint(layer,name,bottom,scope);
+		}
+		else if(layer.getType().equals("Softmax")) {
+//			//Softmax is probably the last layer
+//			//before writing it's own code,
+//			//Get the last convolution layer
+//			//and squeeze it
+//			//TODO learn squeezing
+//			LayerParameter lastConvolution=null;
+//			for(int i=net.getLayerList().size()-1;i>=0;i--) {
+//				if(net.getLayerList().get(i).getType().equals("Convolution")) {
+//					lastConvolution=net.getLayerList().get(i);
+//					break;
+//				}
+//			}
+//			String lastConvolution_endPoint=null;
+//			if (lastConvolution.getName().contains("/")) {
+//				String[] temp=lastConvolution.getName().split("/");
+//				//TODO remove lowercases from everywhere to remove confusion
+//				lastConvolution_endPoint=temp[temp.length-2];
+//			}
+//			else {
+//				lastConvolution_endPoint=lastConvolution.getName();
+//			}
+//			code+="Logit=tf.squeeze("+lastConvolution_endPoint+", [1,2], name='SpatialSqueeze')\n";
+//			code+="end_points['"+lastConvolution_endPoint+"']= Logit\n";
+			
+			//softmax own code
+			//left side
+			code+="end_points['"+layer.getName()+"']";
+			
+			code+="=";
+			
+			//right side
+			code+="slim.softmax";
+			
+			List<String> arguments=new ArrayList<String>();
+			
+			//TODO handle more than one bottom error
+			arguments.add(layer.getBottom(0));
+			arguments.add("scope='"+layer.getTop(0)+"'");
+			code+=makeArgumentList(arguments);
+			
+			code+="\n";
+		}
+		return code;
+	}
 	private String createSimpleLayer(LayerParameter layer) {
 		String code="";
 		if (layer.getType().equals("Input")) {
@@ -564,7 +706,86 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimpleConvolutionEndPoint(LayerParameter layer) {
+	private String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String scope) {
+		//check if end_point already exists
+		// TODO check if this is necessary
+		if (end_points.contains(layer.getName())) {
+			return "";
+		}
+		else {
+			end_points.add(layer.getName());
+		}
+		
+		ConvolutionParameter typeParam=layer.getConvolutionParam();
+		
+		//left side 
+		String code=name;
+		
+		code+="=";
+		
+		//right side
+		//sequence in arguments is important
+		List<String> arguments=new ArrayList<String>();
+		 
+		//add bottom 
+		//assuming bottom would be only one for Convolution Layer
+		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		arguments.add(bottom);
+		
+		//add num_of_output
+		arguments.add(Integer.toString(typeParam.getNumOutput()));
+		
+		//kernel dimension
+		//assuming only one kernel size
+		if (typeParam.getKernelSizeCount()!=1) {
+			errors.add("more than one kernel size for: "+layer.getName());
+		}
+		String s="[";
+		if (typeParam.hasKernelH()) {
+			s+=Integer.toString(typeParam.getKernelH());
+		}
+		else {
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
+		}
+		s+=",";
+		if (typeParam.hasKernelW()) {
+			s+=Integer.toString(typeParam.getKernelW());
+		}
+		else {
+			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+				s+=Integer.toString(typeParam.getKernelSize(0));
+			}
+			else {
+				s+="7";
+			}
+		}
+		s+="]";
+		arguments.add(s);
+		
+		//stride
+		//assuming single stride
+		if (typeParam.getStrideList().size()!=1) {
+			errors.add("more than one stride for: "+scope);
+		}
+		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		
+		//scope
+		arguments.add("scope='"+scope+"'");
+		
+		//make slim call
+		code+="slim.conv2d";
+		
+		code+=makeArgumentList(arguments);
+		
+		code+="\n";
+		return code;
+	}
+	private String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String bottom, String scope) {
 		//check if end_point already exists
 		if (end_points.contains(layer.getName())) {
 			return "";
@@ -790,6 +1011,74 @@ public class CodeGenerator {
 		return code;
 	}
 
+	private String createSimplePoolingEndPoint(LayerParameter layer, String name, String scope, String bottom) {
+		//check if end_point already exists
+		if (end_points.contains(layer.getName())) {
+			return "";
+		}
+		else {
+			end_points.add(layer.getName());
+		}
+		
+		PoolingParameter typeParam=layer.getPoolingParam();
+		
+		//left side 
+		String code=name;
+		
+		code+="=";
+		
+		//right side
+		//sequence in arguments is important
+		List<String> arguments=new ArrayList<String>();
+		 
+		//add bottom 
+		//assuming bottom would be only one for Convolution Layer
+		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		arguments.add(bottom);
+		
+		
+		//kernel dimension
+		String s="[";
+		if (typeParam.hasKernelH()) {
+			s+=Integer.toString(typeParam.getKernelH());
+		}
+		else {
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
+		}
+		s+=",";
+		if (typeParam.hasKernelW()) {
+			s+=Integer.toString(typeParam.getKernelW());
+		}
+		else {
+			if (typeParam.getKernelSize()>0) {
+				s+=Integer.toString(typeParam.getKernelSize());
+			}
+			else {
+				s+="7";
+			}
+		}
+		s+="]";
+		arguments.add(s);
+		
+		//stride
+		arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		
+		//scope
+		arguments.add("scope='"+scope+"'");
+		
+		//make slim call
+		code+="slim.max_pool2d";
+		
+		code+=makeArgumentList(arguments);
+		
+		code+="\n";
+		return code;
+	}
 	private String makeWithHeader(String name, List<String> arguments, String alias) {
 		String code="with "+name;
 		code+=makeArgumentList(arguments);
