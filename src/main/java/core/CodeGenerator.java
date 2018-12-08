@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import caffe.Caffe.ConvolutionParameter;
 import caffe.Caffe.DropoutParameter;
@@ -20,6 +21,7 @@ public class CodeGenerator {
     public List<String> errors;
     private List<String> end_points;
     private String input;
+    private String concatLayerCommonName="concat_point";
     List<LayerParameter> Unhandled_Layers;
 
     public CodeGenerator() {
@@ -166,7 +168,7 @@ public class CodeGenerator {
 		//start with input as bottom
 		String bottom=input;
 	
-		while (Unhandled_Layers.size()>0) {
+		while (Unhandled_Layers.size()>3) {
 			
 			List<LayerParameter> curLayers=getAllBottoms(bottom);
 			
@@ -179,58 +181,26 @@ public class CodeGenerator {
 				}
 				else {
 					// simple layer :has only one input that also does not go to any other layer
-					code+=createSimpleLayer(layer);
-					//this layer is now handled
-					removeHandledLayer(layer);
+					code+=createSimpleLayer(layer,null,null,null);
 					//update bottom
 					bottom=layer.getTop(0);
 				}
 			}
 			else if(curLayers.size()>1) {
-				System.out.println(bottom);
 				//Branching
-				code+=createNewBranch(curLayers,"");
-				break;
+				Map<String, String> dictionary=createNewBranch(curLayers,"");
+				code+=dictionary.get("code");
+				//update bottom
+				bottom=dictionary.get("bottom");
 			}
 			else {
 				System.out.println("debug what happend");
+				System.out.println(bottom);
 				break;
 			}
 			
 			
 		}
-		
-		
-		
-		
-		
-		//OLD CODE
-//		List<LayerParameter> layers = net.getLayerList();
-//		for (int i=0;i<layers.size();i++) {
-//			// search for how many layers take current bottom as top
-//			LayerParameter layer=layers.get(i);
-//			
-//			if (layer.getName().contains("/")==false){
-//				code+=createSimpleLayer(layer);
-//			}
-//			else {
-//				code+=createBranchedlayer(layer);
-//			}
-//		}
-//		
-//		//TODO check how many
-//		for (int i=0;i<layers.size();i++) {
-//			LayerParameter layer=layers.get(i);
-//			
-//			if (layer.getName().contains("/")==false){
-//				code+=createSimpleLayer(layer);
-//			}
-//			else {
-//				code+=createBranchedlayer(layer);
-//			}
-//			
-//		}
-		
 		
 		return code;
 	}
@@ -254,7 +224,9 @@ public class CodeGenerator {
 	}
 	
 
-	private String createNewBranch( List<LayerParameter> layers, String code) {
+	private Map<String, String> createNewBranch( List<LayerParameter> layers, String code) {
+		
+		Map<String, String> dictionary = new HashMap<String, String>();
 		
 		String mixed_scope_header="";
 		String mixed_scope_code="";
@@ -264,7 +236,6 @@ public class CodeGenerator {
 		//check all layers that are branched out
 		for (int i=0;i<layers.size();i++) {
 			String branch_name= "branch_"+Integer.toString(i);
-			System.out.println(branch_name);
 			String branch_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(branch_name))+"\n";
 			String branch_scope_code="";
 			
@@ -294,12 +265,11 @@ public class CodeGenerator {
 				// if no slash there 
 				scope=layer.getName();
 			}
-			branch_scope_code += createSimpleLayer(layer, branch_name,scope);
+			branch_scope_code += createSimpleLayer(layer, branch_name,null,scope);
 			
 			if (curLayers.size()==1) {
-				//no further chaining
 				LayerParameter branch=curLayers.get(0);
-				//TODO boilerplat code
+				//TODO boilerplate code
 				scope=null;
 				if (branch.getName().contains("/")) {
 					// TODO check for all type of invalid variable naming in python
@@ -310,9 +280,48 @@ public class CodeGenerator {
 					// if no slash there 
 					scope=branch.getName();
 				}
-				branch_scope_code += createSimpleLayer(branch,branch_name, scope);
+				
+				
+				// now check bottoms, and remove concat
+				List<LayerParameter> forward=getAllBottoms(branch.getName());
+				it=forward.iterator();
+				while(it.hasNext()) {
+					LayerParameter entry=it.next();
+					if (entry.getType().equals("Concat")) {
+						concatLayer=entry;
+						it.remove();
+					}
+				}
+				
+				if (forward.size()==0) {
+					//no further chaining
+					//just write this one function
+					// this could be done in prior step, but just staying safe with inceptionv1
+					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+				}
+				else if(forward.size()==1){
+					//TODO do chaining
+					branch_scope_code+=chaining(branch,branch_name,null, scope);
+				}
+				else {
+					//create new branch
+					//Branching Recursion
+					Map<String, String> temp=createNewBranch(forward,"");
+					branch_scope_code+=temp.get("code");
+					// no need to update bottom
+					//bottom=dictionary.get("bottom");
+					branch_scope_code+= branch_name + "=" + concatLayerCommonName;
+				}
 			}
-			
+			else if (curLayers.size()>1) {
+				//create new branch
+				//Branching Recursion
+				Map<String, String> temp=createNewBranch(curLayers,"");
+				branch_scope_code+=dictionary.get("code");
+				// no need to update bottom
+				//bottom=dictionary.get("bottom");
+				branch_scope_code+= branch_name + "=" + concatLayerCommonName;
+			}
 			
 			mixed_scope_code+=branch_scope_header+tabSpaceAllLines(branch_scope_code)+"\n";
 			
@@ -321,7 +330,84 @@ public class CodeGenerator {
 		//end with concating the layers
 		String root=concatLayer.getName();
 		mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(root))+'\n';
+		
+		//Created concat layer
+		mixed_scope_code+= createConcatLayer(concatLayer);
+		
 		code+= mixed_scope_header+ tabSpaceAllLines(mixed_scope_code) + "\n";
+		
+		//put the full thing in end_points
+		code += "end_points[" + root + "]="+concatLayerCommonName+"\n";
+		
+		dictionary.put("code", code);
+		dictionary.put("bottom", root);
+		
+		return dictionary;
+	}
+
+	private String chaining(LayerParameter branch, String branch_name, Object object, String scope) {
+		String code="";
+		
+		List<LayerParameter> curLayers=getAllBottoms(branch.getName());
+		
+		if (curLayers.size()==0) {
+			//no further chaining
+			//just write this one function
+			// this could be done in prior step, but just staying safe with inceptionv1
+			code += createSimpleLayer(branch,branch_name,null, scope);
+		}
+		else if(curLayers.size()==1){
+			//TODO do chaining
+			code+=chaining(branch,branch_name,null, scope);
+		}
+		else {
+			//create new branch
+			//Branching Recursion
+			Map<String, String> temp=createNewBranch(curLayers,"");
+			code+=temp.get("code");
+			// no need to update bottom
+			//bottom=dictionary.get("bottom");
+			code+= branch_name + "=" + concatLayerCommonName;
+		}
+		
+		return code;
+	}
+
+	private String createConcatLayer(LayerParameter layer) {
+		String code="";
+		
+		//left side 
+		code+=concatLayerCommonName;
+		
+		code+="=";
+		
+		//right side
+		code+= "tf.concat";
+		
+		List<String> arguments= new ArrayList<String>();
+		
+		//axis
+		if (layer.getConcatParam().hasAxis()) {
+			arguments.add("axis="+Integer.toString(layer.getConcatParam().getAxis()));
+		}
+		else {
+			arguments.add("axis=3");
+		}
+		
+		//values
+		String temp="values=[";
+		for (int i=0;i<layer.getBottomCount();i++) {
+			temp+= "branch_"+Integer.toString(i);
+			if (i<layer.getBottomCount()-1) {
+				temp+=",";
+			}
+		}
+		temp+="]";
+		arguments.add(temp);
+		
+		code += makeArgumentList(arguments);
+		
+		removeHandledLayer(layer);
 		
 		return code;
 	}
@@ -414,7 +500,7 @@ public class CodeGenerator {
 				LayerParameter layer=net.getLayerList().get(i); 
 				if (layer.getName().contains(current.subSequence(0, current.length()-1))){
 					//work with the layer
-					variableScopeCode+=createSimpleLayer(layer);
+					variableScopeCode+=createSimpleLayer(layer,null,null,null);
 					break;
 				}	
 			}
@@ -545,92 +631,7 @@ public class CodeGenerator {
 			
 			code+="\n";
 		}
-		return code;
-	}
-	private String createSimpleLayer(LayerParameter layer) {
-		String code="";
-		if (layer.getType().equals("Input")) {
-			//TODO
-		}
-		else if (layer.getType().equals("Convolution")) {
-			code+=createSimpleConvolutionEndPoint(layer);
-		}
-		else if (layer.getType().equals("BatchNorm")) {
-			//do nothing
-		}
-		else if (layer.getType().equals("Scale")) {
-			//do nothing
-		}
-		else if (layer.getType().equals("ReLU")) {
-			//do nothing
-		}
-		else if (layer.getType().equals("Pooling")) {
-			code+=createSimplePoolingEndPoint(layer);
-		}
-		else if(layer.getType().equals("Concat")) {
-			//left side
-			code+="end_points['"+layer.getName()+"']";
-			
-			code+="=";
-			
-			//right side
-			code+="tf.concat(axis=3,values=[";
-			List<String> bottomList=layer.getBottomList();
-			for (int i=0;i<bottomList.size();i++) {
-				String name=bottomList.get(i);
-				// assuming bottoms would be branches 
-				//TODO add error
-				name=name.split("/")[1];
-				code+=name.toLowerCase();
-				if(i<bottomList.size()-1) {
-					code+=",";
-				}
-			}
-			code+="])\n";
-		}
-		else if(layer.getType().equals("Softmax")) {
-//			//Softmax is probably the last layer
-//			//before writing it's own code,
-//			//Get the last convolution layer
-//			//and squeeze it
-//			//TODO learn squeezing
-//			LayerParameter lastConvolution=null;
-//			for(int i=net.getLayerList().size()-1;i>=0;i--) {
-//				if(net.getLayerList().get(i).getType().equals("Convolution")) {
-//					lastConvolution=net.getLayerList().get(i);
-//					break;
-//				}
-//			}
-//			String lastConvolution_endPoint=null;
-//			if (lastConvolution.getName().contains("/")) {
-//				String[] temp=lastConvolution.getName().split("/");
-//				//TODO remove lowercases from everywhere to remove confusion
-//				lastConvolution_endPoint=temp[temp.length-2];
-//			}
-//			else {
-//				lastConvolution_endPoint=lastConvolution.getName();
-//			}
-//			code+="Logit=tf.squeeze("+lastConvolution_endPoint+", [1,2], name='SpatialSqueeze')\n";
-//			code+="end_points['"+lastConvolution_endPoint+"']= Logit\n";
-			
-			//softmax own code
-			//left side
-			code+="end_points['"+layer.getName()+"']";
-			
-			code+="=";
-			
-			//right side
-			code+="slim.softmax";
-			
-			List<String> arguments=new ArrayList<String>();
-			
-			//TODO handle more than one bottom error
-			arguments.add(layer.getBottom(0));
-			arguments.add("scope='"+layer.getTop(0)+"'");
-			code+=makeArgumentList(arguments);
-			
-			code+="\n";
-		}
+		removeHandledLayer(layer);
 		return code;
 	}
 
@@ -706,85 +707,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String scope) {
-		//check if end_point already exists
-		// TODO check if this is necessary
-		if (end_points.contains(layer.getName())) {
-			return "";
-		}
-		else {
-			end_points.add(layer.getName());
-		}
-		
-		ConvolutionParameter typeParam=layer.getConvolutionParam();
-		
-		//left side 
-		String code=name;
-		
-		code+="=";
-		
-		//right side
-		//sequence in arguments is important
-		List<String> arguments=new ArrayList<String>();
-		 
-		//add bottom 
-		//assuming bottom would be only one for Convolution Layer
-		String bottom = "end_points['"+layer.getBottom(0)+"']";
-		arguments.add(bottom);
-		
-		//add num_of_output
-		arguments.add(Integer.toString(typeParam.getNumOutput()));
-		
-		//kernel dimension
-		//assuming only one kernel size
-		if (typeParam.getKernelSizeCount()!=1) {
-			errors.add("more than one kernel size for: "+layer.getName());
-		}
-		String s="[";
-		if (typeParam.hasKernelH()) {
-			s+=Integer.toString(typeParam.getKernelH());
-		}
-		else {
-			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
-				s+=Integer.toString(typeParam.getKernelSize(0));
-			}
-			else {
-				s+="7";
-			}
-		}
-		s+=",";
-		if (typeParam.hasKernelW()) {
-			s+=Integer.toString(typeParam.getKernelW());
-		}
-		else {
-			if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
-				s+=Integer.toString(typeParam.getKernelSize(0));
-			}
-			else {
-				s+="7";
-			}
-		}
-		s+="]";
-		arguments.add(s);
-		
-		//stride
-		//assuming single stride
-		if (typeParam.getStrideList().size()!=1) {
-			errors.add("more than one stride for: "+scope);
-		}
-		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
-		
-		//scope
-		arguments.add("scope='"+scope+"'");
-		
-		//make slim call
-		code+="slim.conv2d";
-		
-		code+=makeArgumentList(arguments);
-		
-		code+="\n";
-		return code;
-	}
+	
 	private String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String bottom, String scope) {
 		//check if end_point already exists
 		if (end_points.contains(layer.getName())) {
@@ -794,10 +717,18 @@ public class CodeGenerator {
 			end_points.add(layer.getName());
 		}
 		
+		String code="";
+		
 		ConvolutionParameter typeParam=layer.getConvolutionParam();
 		
 		//left side 
-		String code="end_points['"+layer.getName()+"']";
+		// name 
+		if (name !=null) {
+			code+=name;
+		}
+		else {
+			code+="end_points['"+layer.getName()+"']";
+		}
 		
 		code+="=";
 		
@@ -807,7 +738,12 @@ public class CodeGenerator {
 		 
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
-		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		if (bottom != null) {
+			bottom = "end_points['"+bottom+"']";
+		}
+		else {
+			bottom = "end_points['"+layer.getBottom(0)+"']";
+		}
 		arguments.add(bottom);
 		
 		//add num_of_output
@@ -853,7 +789,12 @@ public class CodeGenerator {
 		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
 		
 		//scope
-		arguments.add("scope='"+layer.getTop(0)+"'");
+		if (scope!=null) {
+			arguments.add("scope='"+scope+"'");
+		}
+		else {
+			arguments.add("scope='"+layer.getTop(0)+"'");
+		}
 		
 		//make slim call
 		code+="slim.conv2d";
@@ -864,74 +805,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimplePoolingEndPoint(LayerParameter layer) {
-		//check if end_point already exists
-		if (end_points.contains(layer.getName())) {
-			return "";
-		}
-		else {
-			end_points.add(layer.getName());
-		}
-		
-		PoolingParameter typeParam=layer.getPoolingParam();
-		
-		//left side 
-		String code="end_points['"+layer.getName()+"']";
-		
-		code+="=";
-		
-		//right side
-		//sequence in arguments is important
-		List<String> arguments=new ArrayList<String>();
-		 
-		//add bottom 
-		//assuming bottom would be only one for Convolution Layer
-		String bottom = "end_points['"+layer.getBottom(0)+"']";
-		arguments.add(bottom);
-		
-		
-		//kernel dimension
-		String s="[";
-		if (typeParam.hasKernelH()) {
-			s+=Integer.toString(typeParam.getKernelH());
-		}
-		else {
-			if (typeParam.getKernelSize()>0) {
-				s+=Integer.toString(typeParam.getKernelSize());
-			}
-			else {
-				s+="7";
-			}
-		}
-		s+=",";
-		if (typeParam.hasKernelW()) {
-			s+=Integer.toString(typeParam.getKernelW());
-		}
-		else {
-			if (typeParam.getKernelSize()>0) {
-				s+=Integer.toString(typeParam.getKernelSize());
-			}
-			else {
-				s+="7";
-			}
-		}
-		s+="]";
-		arguments.add(s);
-		
-		//stride
-		arguments.add("stride="+Integer.toString(typeParam.getStride()));
-		
-		//scope
-		arguments.add("scope='"+layer.getTop(0)+"'");
-		
-		//make slim call
-		code+="slim.max_pool2d";
-		
-		code+=makeArgumentList(arguments);
-		
-		code+="\n";
-		return code;
-	}
+	
 	private String createBranchedPoolingEndPoint(LayerParameter layer, String parent,String end_point) {
 		PoolingParameter typeParam=layer.getPoolingParam();
 		
@@ -1011,7 +885,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimplePoolingEndPoint(LayerParameter layer, String name, String scope, String bottom) {
+	private String createSimplePoolingEndPoint(LayerParameter layer, String name, String bottom, String scope) {
 		//check if end_point already exists
 		if (end_points.contains(layer.getName())) {
 			return "";
@@ -1020,10 +894,18 @@ public class CodeGenerator {
 			end_points.add(layer.getName());
 		}
 		
+		String code="";
+		
 		PoolingParameter typeParam=layer.getPoolingParam();
 		
 		//left side 
-		String code=name;
+		// name 
+		if (name !=null) {
+			code+=name;
+		}
+		else {
+			code+="end_points['"+layer.getName()+"']";
+		}
 		
 		code+="=";
 		
@@ -1033,7 +915,13 @@ public class CodeGenerator {
 		 
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
-		String bottom = "end_points['"+layer.getBottom(0)+"']";
+		if (bottom != null) {
+			bottom = "end_points['"+bottom+"']";
+		}
+		else {
+			bottom = "end_points['"+layer.getBottom(0)+"']";
+		}
+		
 		arguments.add(bottom);
 		
 		
@@ -1069,7 +957,12 @@ public class CodeGenerator {
 		arguments.add("stride="+Integer.toString(typeParam.getStride()));
 		
 		//scope
-		arguments.add("scope='"+scope+"'");
+		if (scope!=null) {
+			arguments.add("scope='"+scope+"'");
+		}
+		else {
+			arguments.add("scope='"+layer.getTop(0)+"'");
+		}
 		
 		//make slim call
 		code+="slim.max_pool2d";
