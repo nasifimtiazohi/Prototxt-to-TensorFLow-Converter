@@ -27,7 +27,6 @@ public class CodeGenerator {
 
     public CodeGenerator() {
 		setSimpleTensorFlowPython("");
-		//setMultiplexingTensorFlowPython("");
 		errors=new ArrayList<String>();
 		end_points=new ArrayList<String>();
 	}

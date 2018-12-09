@@ -36,6 +36,7 @@ public class Main {
 		//TODO: if not deploy type then reject
 		
 		CodeGenerator codeGen= new CodeGenerator();
+		MultiplexingCodeGenerator multGen=new MultiplexingCodeGenerator();
 		
 		
 		//if input is a deploy file containing network Info
@@ -48,6 +49,7 @@ public class Main {
 		}
 		NetParameter netParameter=netParameterBuilder.build();
 		codeGen.generateNetworkCode(netParameter);
+		multGen.generateNetworkCode(netParameter);
 		
 		// write code to file
 		InstantiateOutputFiles();
@@ -57,7 +59,7 @@ public class Main {
 			writer.write(codeGen.getSimpleTensorFlowPython());
 			writer.close();
 			writer=new FileWriter(multiplexingOutput);
-			writer.write(codeGen.getMultiplexingTensorFlowPython());
+			writer.write(multGen.getMultiplexingTensorFlowPython());
 			writer.close();
 		} catch (IOException e) {
 			System.out.println("problem in writing to output files");
@@ -66,16 +68,11 @@ public class Main {
 		
 		//helpful print
 		System.out.println("happy ending");
-//		List<LayerParameter> layers=netParameter.getLayerList();
-//		for(int i=0;i<layers.size();i++) {
-//			LayerParameter layer=layers.get(i);
-//			if (layer.getType().equals("Convolution")) {
-//				System.out.println(layer);
-//			}
-//		}
-		for(int i=0;i<codeGen.errors.size();i++) {
-			System.out.println(codeGen.errors.get(i));
-		}
+
+		//System.out.println("Errors for simple tensorflow");
+		codeGen.printErrors();
+		//System.out.println("Errors for multiplexing tensorflow");
+		multGen.printErrors();
 	
 	}
 	private static void InstantiateOutputFiles() {
