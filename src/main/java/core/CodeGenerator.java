@@ -16,38 +16,36 @@ import caffe.Caffe.NetParameter;
 import caffe.Caffe.PoolingParameter;
 
 public class CodeGenerator {
-	private String simpleTensorFlowPython;
-    private String multiplexingTensorFlowPython;
-    private NetParameter net;
-    public List<String> errors;
-    private List<String> end_points;
-    private String input;
-    private String concatLayerCommonName="concat_point";
-    LayerParameter outputLayer; //last convolution or innerproduct layer
-    List<LayerParameter> Unhandled_Layers;
+	protected String simpleTensorFlowPython;
+    protected NetParameter net;
+    protected List<String> errors;
+    protected List<String> end_points;
+    protected String input;
+    protected String concatLayerCommonName="concat_point";
+    protected LayerParameter outputLayer; //last convolution or innerproduct layer
+    protected List<LayerParameter> Unhandled_Layers;
 
     public CodeGenerator() {
 		setSimpleTensorFlowPython("");
-		setMultiplexingTensorFlowPython("");
+		//setMultiplexingTensorFlowPython("");
 		errors=new ArrayList<String>();
 		end_points=new ArrayList<String>();
 	}
-
+    
+    public void printErrors() {
+    	for(int i=0;i<errors.size();i++) {
+			System.out.println(errors.get(i));
+		}
+    }
 	public String getSimpleTensorFlowPython() {
 		return simpleTensorFlowPython;
 	}
 
-	private void setSimpleTensorFlowPython(String simpleTensorFlowPython) {
+	protected void setSimpleTensorFlowPython(String simpleTensorFlowPython) {
 		this.simpleTensorFlowPython = simpleTensorFlowPython;
 	}
 
-	public String getMultiplexingTensorFlowPython() {
-		return multiplexingTensorFlowPython;
-	}
-
-	private void setMultiplexingTensorFlowPython(String multiplexingTensorFlowPython) {
-		this.multiplexingTensorFlowPython = multiplexingTensorFlowPython;
-	}
+	
 
 	public void generateNetworkCode(NetParameter netParameter) {
 		net=netParameter;
@@ -63,13 +61,13 @@ public class CodeGenerator {
 			}
 		}
 		
-		importStatements();
-		networkFunction();
-		changeImageSize();
-		commonCodeToAllModels();
+		simpleTensorFlowPython+=importStatements();
+		simpleTensorFlowPython+=networkFunction();
+		simpleTensorFlowPython+=changeImageSize();
+		simpleTensorFlowPython+=commonCodeToAllModels();
 	}
 
-	private void changeImageSize() {
+	protected String changeImageSize() {
 		String code ="\n \n ### change the default image_size based on the input image size specified in prototxt ### \n";
 		
 		List<BlobShape> blobs=net.getInputShapeList();
@@ -78,12 +76,11 @@ public class CodeGenerator {
 		Long dim=dims.get(blob.getDimCount()-1);
 		
 		code+= net.getName()+".default_image_size = "+Long.toString(dim);
-		
-		simpleTensorFlowPython+=code;
+		return code;
 		
 	}
 
-	private void commonCodeToAllModels() {
+	protected String commonCodeToAllModels() {
 		String code="\n\n\n"
 				+ "# The below code is applicable to any model. It is adapted from \n" + 
 				"# https://github.com/tensorflow/models/blob/master/research/slim/nets/inception_utils.py\n" + 
@@ -126,19 +123,23 @@ public class CodeGenerator {
 				"            with slim.arg_scope([slim.conv2d, slim.max_pool2d],\n" + 
 				"                      stride=1, padding='SAME') as sc:\n" + 
 				"              return sc";
-		simpleTensorFlowPython+=code;
+		return code;
 		
 	}
 
-	private void networkFunction() {
+	protected String networkFunction() {
+		String fullCode="";
+		
 		String header=networkFunctionHeader();
 		String code=networkFunctionCode();
 		code+="return Logits,end_points";
 		code=tabSpaceAllLines(code);
-		simpleTensorFlowPython += header + "\n" +code + "\n";
+		fullCode += header + "\n" +code + "\n";
+		
+		return fullCode;
 	}
 
-	private String networkFunctionCode() {
+	protected String networkFunctionCode() {
 		String code="";
 		
 		String variable_scope_header="with tf.variable_scope(scope,\"Model\",reuse=reuse):";
@@ -149,7 +150,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String variableScope() {
+	protected String variableScope() {
 		String code = "";
 		
 		String arg_scope_header="with slim.arg_scope(default_arg_scope(is_training):";
@@ -160,7 +161,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String argumentScope() {
+	protected String argumentScope() {
 		String code="end_points= {}\n";
 		
 		//when we handle a layer, we will remove that item from this list
@@ -238,7 +239,7 @@ public class CodeGenerator {
 		return code;
 	}
 	
-	private List<LayerParameter> getAllBottoms(String bottom) {
+	protected List<LayerParameter> getAllBottoms(String bottom) {
 		
 		List<LayerParameter> curLayers=new ArrayList<LayerParameter>();
 		
@@ -257,7 +258,7 @@ public class CodeGenerator {
 	}
 	
 
-	private Map<String, String> createNewBranch( List<LayerParameter> layers, String code) {
+	protected Map<String, String> createNewBranch( List<LayerParameter> layers, String code) {
 		
 		Map<String, String> dictionary = new HashMap<String, String>();
 		
@@ -334,10 +335,12 @@ public class CodeGenerator {
 					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
 				}
 				else if(forward.size()==1){
-					//TODO do chaining
+					//chaining
 					branch_scope_code+=chaining(branch,branch_name,null, scope);
 				}
 				else {
+					//create its own
+					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
 					//create new branch
 					//Branching Recursion
 					Map<String, String> temp=createNewBranch(forward,"");
@@ -394,25 +397,57 @@ public class CodeGenerator {
 		return dictionary;
 	}
 
-	private String chaining(LayerParameter branch, String branch_name, Object object, String scope) {
+	protected String chaining(LayerParameter branch, String branch_name, String bottom, String scope) {
 		String code="";
 		
-		List<LayerParameter> curLayers=getAllBottoms(branch.getName());
+		code+=createSimpleLayer(branch, branch_name, bottom, scope);
 		
-		if (curLayers.size()==0) {
+		//change branch to it's successor
+		branch=findLayerFromName(branch.getTop(0));
+		
+		if (branch==null) {
+			return "";
+		}
+		
+		//TODO boilerplate code
+		scope=null;
+		if (branch.getName().contains("/")) {
+			// TODO check for all type of invalid variable naming in python
+			String[] temp=branch.getName().split("/");
+			scope=temp[temp.length-1];
+		}
+		else {
+			// if no slash there 
+			scope=branch.getName();
+		}
+		
+		
+		// now check bottoms, and remove concat
+		List<LayerParameter> forward=getAllBottoms(branch.getName());
+		Iterator<LayerParameter> it=forward.iterator();
+		while(it.hasNext()) {
+			LayerParameter entry=it.next();
+			if (entry.getType().equals("Concat")) {
+				it.remove();
+			}
+		}
+		
+		if (forward.size()==0) {
 			//no further chaining
 			//just write this one function
 			// this could be done in prior step, but just staying safe with inceptionv1
 			code += createSimpleLayer(branch,branch_name,null, scope);
 		}
-		else if(curLayers.size()==1){
-			//TODO do chaining
+		else if(forward.size()==1){
+			//chaining
 			code+=chaining(branch,branch_name,null, scope);
 		}
 		else {
+			//create its own
+			code += createSimpleLayer(branch,branch_name,null, scope);
 			//create new branch
 			//Branching Recursion
-			Map<String, String> temp=createNewBranch(curLayers,"");
+			Map<String, String> temp=createNewBranch(forward,"");
 			code+=temp.get("code");
 			// no need to update bottom
 			//bottom=dictionary.get("bottom");
@@ -422,7 +457,16 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createConcatLayer(LayerParameter layer) {
+	protected LayerParameter findLayerFromName(String top) {
+		for(int i=0;i<Unhandled_Layers.size();i++) {
+			if(Unhandled_Layers.get(i).getName().equals(top)) {
+				return Unhandled_Layers.get(i);
+			}
+		}
+		return null;
+	}
+
+	protected String createConcatLayer(LayerParameter layer) {
 		String code="";
 		
 		//left side 
@@ -461,7 +505,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private void removeHandledLayer(LayerParameter layer) {
+	protected void removeHandledLayer(LayerParameter layer) {
 		Iterator<LayerParameter> i= Unhandled_Layers.iterator();
 		while (i.hasNext()) {
 			LayerParameter entry=i.next();
@@ -477,7 +521,7 @@ public class CodeGenerator {
 
 
 
-	private String createSimpleLayer(LayerParameter layer, String name,  String bottom, String scope ) {
+	protected String createSimpleLayer(LayerParameter layer, String name,  String bottom, String scope ) {
 		String code="";
 		
 		if (layer.getType().equals("Convolution")) {
@@ -534,7 +578,7 @@ public class CodeGenerator {
 
 
 	
-	private String createDropoutLayer(LayerParameter layer) {
+	protected String createDropoutLayer(LayerParameter layer) {
 		String code="";
 				
 		DropoutParameter dropoutParam=layer.getDropoutParam();
@@ -570,7 +614,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String bottom, String scope) {
+	protected String createSimpleConvolutionEndPoint(LayerParameter layer, String name, String bottom, String scope) {
 		//check if end_point already exists
 		if (end_points.contains(layer.getName())) {
 			return "";
@@ -669,7 +713,7 @@ public class CodeGenerator {
 
 	
 	
-	private String makeArgumentList(List<String> arguments) {
+	protected String makeArgumentList(List<String> arguments) {
 		String code="(";
 		
 		for (int i=0;i<arguments.size();i++) {
@@ -688,7 +732,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String createSimplePoolingEndPoint(LayerParameter layer, String name, String bottom, String scope) {
+	protected String createSimplePoolingEndPoint(LayerParameter layer, String name, String bottom, String scope) {
 		//check if end_point already exists
 		if (end_points.contains(layer.getName())) {
 			return "";
@@ -775,20 +819,20 @@ public class CodeGenerator {
 		code+="\n";
 		return code;
 	}
-	private String makeWithHeader(String name, List<String> arguments, String alias) {
+	protected String makeWithHeader(String name, List<String> arguments, String alias) {
 		String code="with "+name;
 		code+=makeArgumentList(arguments);
 		code+=" as "+alias+":";
 		return code;
 	}
 
-	private String makeWithHeader(String name, List<String> arguments) {
+	protected String makeWithHeader(String name, List<String> arguments) {
 		String code="with "+name;
 		code+=makeArgumentList(arguments);
 		code+=":";
 		return code;
 	}
-	private String tabSpaceAllLines(String code) {
+	protected String tabSpaceAllLines(String code) {
 		code="\t"+code;
 		
 		for (int i = -1; (i = code.indexOf("\n", i + 1)) != -1; i++) {
@@ -802,7 +846,7 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String networkFunctionHeader() {
+	protected String networkFunctionHeader() {
 		List<String> arguments=new ArrayList<String>();
 		
 		String name=net.getName();
@@ -835,21 +879,20 @@ public class CodeGenerator {
 		arguments.add(input);
 		
 		//Get the num_output of last output layer (convolution or innerproduct)
+		//TODO can get from 
 		int output_count=0;
 		List<LayerParameter> layers=net.getLayerList();
-		for (int i=layers.size()-1;i>=0;i--) {
-			LayerParameter layer=layers.get(i);
-			if (layer.getType().equals("Convolution") ) {
-				ConvolutionParameter convParam = layer.getConvolutionParam();
-				output_count=convParam.getNumOutput();
-				break;
-			}
-			else if (layer.getType().equals("InnerProduct")) {
-				InnerProductParameter innerProdParam = layer.getInnerProductParam();
-				output_count=innerProdParam.getNumOutput();
-				break;
-			}
+		
+		//get num_output from output layer
+		if (outputLayer.getType().equals("Convolution") ) {
+			ConvolutionParameter convParam = outputLayer.getConvolutionParam();
+			output_count=convParam.getNumOutput();
 		}
+		else if (outputLayer.getType().equals("InnerProduct")) {
+			InnerProductParameter innerProdParam = outputLayer.getInnerProductParam();
+			output_count=innerProdParam.getNumOutput();
+		}
+		
 		String num_classes="num_classes="+Integer.toString(output_count);
 		arguments.add(num_classes);
 		
@@ -870,20 +913,20 @@ public class CodeGenerator {
 		return code;
 	}
 
-	private String makeFunctionHeader(String name, List<String> arguments) {
+	protected String makeFunctionHeader(String name, List<String> arguments) {
 		String code="def "+name;
 		code+=makeArgumentList(arguments);
 		code+=":";
 		return code;
 	}
 
-	private void importStatements() {
+	protected String importStatements() {
 		String code="import tensorflow as tf"
 				+ "\n"
 				+ "slim=tf.contrib.slim" // uses slim api 
 				+ "\n\n"
 				;
-		simpleTensorFlowPython += code;
+		return code;
 		
 	}
 
