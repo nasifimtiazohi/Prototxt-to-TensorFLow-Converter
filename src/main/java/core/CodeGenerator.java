@@ -336,7 +336,8 @@ public class CodeGenerator {
 				}
 				else if(forward.size()==1){
 					//chaining
-					branch_scope_code+=chaining(branch,branch_name,null, scope);
+					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+					branch_scope_code+=chaining(forward.get(0),branch_name,null);
 				}
 				else {
 					//create its own
@@ -397,20 +398,11 @@ public class CodeGenerator {
 		return dictionary;
 	}
 
-	protected String chaining(LayerParameter branch, String branch_name, String bottom, String scope) {
+	protected String chaining(LayerParameter branch, String branch_name, String bottom) {
 		String code="";
 		
-		code+=createSimpleLayer(branch, branch_name, bottom, scope);
-		
-		//change branch to it's successor
-		branch=findLayerFromName(branch.getTop(0));
-		
-		if (branch==null) {
-			return "";
-		}
-		
 		//TODO boilerplate code
-		scope=null;
+		String scope=null;
 		if (branch.getName().contains("/")) {
 			// TODO check for all type of invalid variable naming in python
 			String[] temp=branch.getName().split("/");
@@ -434,13 +426,13 @@ public class CodeGenerator {
 		
 		if (forward.size()==0) {
 			//no further chaining
-			//just write this one function
-			// this could be done in prior step, but just staying safe with inceptionv1
 			code += createSimpleLayer(branch,branch_name,null, scope);
 		}
 		else if(forward.size()==1){
 			//chaining
-			code+=chaining(branch,branch_name,null, scope);
+			//chaining
+			code += createSimpleLayer(branch,branch_name,null, scope);
+			code+=chaining(forward.get(0),branch_name,null);
 		}
 		else {
 			//create its own
