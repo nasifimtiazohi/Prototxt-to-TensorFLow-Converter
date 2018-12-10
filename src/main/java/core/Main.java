@@ -23,7 +23,7 @@ public class Main {
 	public static void main(String[] args) {
 		
 		// work on given 3 input files
-		String[] myInputFiles=new String[] {"inceptionv1.prototxt"};
+		String[] myInputFiles=new String[] {"inceptionv1.prototxt","alexnet.prototxt","lenet.prototxt"};
 		for (int i=0;i<myInputFiles.length;i++) {
 			generateTensorFlowFiles(myInputFiles[i]);
 		}

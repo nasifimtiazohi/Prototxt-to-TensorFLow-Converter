@@ -522,7 +522,20 @@ public class CodeGenerator {
 		//check if last_layer
 		if(layer.equals(outputLayer)) {
 			//assume convolution layer
+			
 			ConvolutionParameter typeParam = outputLayer.getConvolutionParam();
+			
+			//handle name
+			if(name==null) {
+				name=layer.getTop(0);
+			}
+			
+			//handle scope
+			if(scope==null) {
+				scope=layer.getTop(0);
+			}
+			
+			//handle kernel size
 			String s="[";
 			if (typeParam.hasKernelH()) {
 				s+=Integer.toString(typeParam.getKernelH());
@@ -548,6 +561,8 @@ public class CodeGenerator {
 				}
 			}
 			s+="]";
+			
+			//handle stride
 			String stride="";
 			if (typeParam.getStrideList().size()>1) {
 				errors.add("more than one stride for: "+layer.getName());
@@ -558,6 +573,8 @@ public class CodeGenerator {
 			else {
 				stride="stride=1";
 			}
+			
+			//handle bottom and generate code
 			if (bottom!=null) {
 				code+= name + "=slim.conv2d(end_points['"+bottom+"'],num_classes,"+s+","+stride+",activation_fn=None,\n" + 
 						"                             normalizer_fn=None,scope='"+scope+"')\n";
