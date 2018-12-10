@@ -158,7 +158,7 @@ public class CodeGenerator {
 	protected String variableScope() {
 		String code = "";
 		
-		String arg_scope_header="with slim.arg_scope(default_arg_scope(is_training):";
+		String arg_scope_header="with slim.arg_scope(default_arg_scope(is_training)):";
 		String arg_scope_code=argumentScope();
 		arg_scope_code=tabSpaceAllLines(arg_scope_code);
 		code+=arg_scope_header+"\n"+arg_scope_code+"\n";
@@ -337,16 +337,16 @@ public class CodeGenerator {
 					//no further chaining
 					//just write this one function
 					// this could be done in prior step, but just staying safe with inceptionv1
-					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+					branch_scope_code += createSimpleLayer(branch,branch_name,branch_name, scope);
 				}
 				else if(forward.size()==1){
 					//chaining
-					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+					branch_scope_code += createSimpleLayer(branch,branch_name,branch_name, scope);
 					branch_scope_code+=chaining(forward.get(0),branch_name,null);
 				}
 				else {
 					//create its own
-					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+					branch_scope_code += createSimpleLayer(branch,branch_name,branch_name, scope);
 					//create new branch
 					//Branching Recursion
 					Map<String, String> temp=createNewBranch(forward,"");
@@ -431,17 +431,16 @@ public class CodeGenerator {
 		
 		if (forward.size()==0) {
 			//no further chaining
-			code += createSimpleLayer(branch,branch_name,null, scope);
+			code += createSimpleLayer(branch,branch_name,branch_name, scope);
 		}
 		else if(forward.size()==1){
 			//chaining
-			//chaining
-			code += createSimpleLayer(branch,branch_name,null, scope);
+			code += createSimpleLayer(branch,branch_name,branch_name, scope);
 			code+=chaining(forward.get(0),branch_name,null);
 		}
 		else {
 			//create its own
-			code += createSimpleLayer(branch,branch_name,null, scope);
+			code += createSimpleLayer(branch,branch_name,branch_name, scope);
 			//create new branch
 			//Branching Recursion
 			Map<String, String> temp=createNewBranch(forward,"");
@@ -560,10 +559,12 @@ public class CodeGenerator {
 				stride="stride=1";
 			}
 			if (bottom!=null) {
-				code+= name + "=slim.conv2d(end_points['"+bottom+"'],num_classes,"+s+","+stride+",scope='"+scope+"')";
+				code+= name + "=slim.conv2d(end_points['"+bottom+"'],num_classes,"+s+","+stride+",activation_fn=None,\n" + 
+						"                             normalizer_fn=None,scope='"+scope+"')\n";
 			}
 			else {
-				code+= name + "=slim.conv2d(end_points['"+layer.getBottom(0)+"'],num_classes,"+s+","+stride+",scope='"+scope+"')";
+				code+= name + "=slim.conv2d(end_points['"+layer.getBottom(0)+"'],num_classes,"+s+","+stride+",activation_fn=None,\n" + 
+						"                             normalizer_fn=None,scope='"+scope+"')\n";
 			}
 			
 			//rest of the logit code
@@ -592,8 +593,8 @@ public class CodeGenerator {
 			code+= createDropoutLayer(layer);
 		}
 		else if(layer.getType().equals("Reshape")) {
-			//TODO
 			//probably not related to squeezing
+			code+="harmless_variable=0\n";
 		}
 		else if(layer.getType().equals("Softmax")) {
 			code+="end_points['"+layer.getTop(0)+"']";
@@ -606,7 +607,7 @@ public class CodeGenerator {
 			List<String> arguments=new ArrayList<String>();
 			
 			//TODO handle more than one bottom error
-			arguments.add("end_points['"+layer.getBottom(0)+"']");
+			arguments.add("LogitsNasif");
 			arguments.add("scope='"+layer.getTop(0)+"'");
 			code+=makeArgumentList(arguments);
 			
@@ -688,7 +689,12 @@ public class CodeGenerator {
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
 		if (bottom != null) {
-			bottom = "end_points['"+bottom+"']";
+			if(bottom.contains("branch")) {
+				//do nothing
+			}
+			else {
+				bottom = "end_points['"+bottom+"']";
+			}
 		}
 		else {
 			bottom = "end_points['"+layer.getBottom(0)+"']";
@@ -817,7 +823,12 @@ public class CodeGenerator {
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
 		if (bottom != null) {
-			bottom = "end_points['"+bottom+"']";
+			if(bottom.contains("branch")) {
+				//nothing
+			}
+			else {
+				bottom = "end_points['"+bottom+"']";
+			}
 		}
 		else {
 			bottom = "end_points['"+layer.getBottom(0)+"']";
@@ -956,15 +967,15 @@ public class CodeGenerator {
 		arguments.add(num_classes);
 		
 		//Hardcoded assumption
-		String train_or_test="is_training=true";
+		String train_or_test="is_training=True";
 		arguments.add(train_or_test);
 		
 		//Hardcoded assumption
-		String variableReuse="reuse=true";
+		String variableReuse="reuse=None";
 		arguments.add(variableReuse);
 		
 		//Scope is the network name itself
-		String scope="scope="+name;
+		String scope="scope='"+name+"'";
 		arguments.add(scope);
 		
 		String code=makeFunctionHeader(name,arguments);

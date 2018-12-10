@@ -105,15 +105,15 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		arguments.add(num_classes);
 		
 		//Hardcoded assumption
-		String train_or_test="is_training=true";
+		String train_or_test="is_training=True";
 		arguments.add(train_or_test);
 		
 		//Hardcoded assumption
-		String variableReuse="reuse=true";
+		String variableReuse="reuse=None";
 		arguments.add(variableReuse);
 		
 		//Scope is the network name itself
-		String scope="scope="+name;
+		String scope="scope='"+name+"'";
 		arguments.add(scope);
 		
 		String config="config=None";
@@ -292,7 +292,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		//end with concating the layers
 		if (concatLayer!=null) {
 			String root=concatLayer.getName();
-			mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(root))+'\n';
+			mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList("'"+root+"'"))+'\n';
 			
 			//Created concat layer
 			mixed_scope_code+= createConcatLayer(concatLayer);
@@ -421,7 +421,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
 		if (bottom != null) {
-			if(bottom.equals("net")) {
+			if(bottom.equals("net") || bottom.contains("branch")) {
 				//no change made
 			}
 			else {
@@ -530,7 +530,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		//add bottom 
 		//assuming bottom would be only one for Convolution Layer
 		if (bottom != null) {
-			if(bottom.equals("net")) {
+			if(bottom.equals("net") || bottom.contains("branch")) {
 				//no change made
 			}
 			else {
