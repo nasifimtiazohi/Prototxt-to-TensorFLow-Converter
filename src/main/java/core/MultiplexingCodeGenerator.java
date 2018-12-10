@@ -161,7 +161,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		//check all layers that are branched out
 		for (int i=0;i<layers.size();i++) {
 			String branch_name= "branch_"+Integer.toString(i);
-			String branch_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(branch_name))+"\n";
+			String branch_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList("'"+branch_name+"'"))+"\n";
 			String branch_scope_code="";
 			
 			LayerParameter layer=layers.get(i);
@@ -305,7 +305,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 			code+= mixed_scope_header+ tabSpaceAllLines(mixed_scope_code) + "\n";
 			
 			//put the full thing in end_points
-			code += "end_points[" + root + "]="+concatLayerCommonName+"\n";
+			code += "end_points['" + root + "']="+concatLayerCommonName+"\n";
 			
 			dictionary.put("code", code);
 			dictionary.put("bottom", root);
@@ -313,12 +313,12 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		else {
 			//last output layer 
 			//Limitation: this assumption
-			String root="Logits";
-			mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList(root))+'\n';
+			String root="LogitsNasif";
+			mixed_scope_header=makeWithHeader("tf.variable_scope", Arrays.asList("'"+root+"'"))+'\n';
 			code+= mixed_scope_header+ tabSpaceAllLines(mixed_scope_code) + "\n";
 			
 			//put the full thing in end_points
-			code += "end_points[" + root + "]=Logits\n";
+			code += "end_points['" + root + "']=LogitsNasif\n";
 			
 			dictionary.put("code", code);
 			dictionary.put("bottom", null);
@@ -409,7 +409,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 			code+=name;
 		}
 		else {
-			code+="end_points['"+layer.getName()+"']";
+			code+="end_points['"+layer.getTop(0)+"']";
 		}
 		
 		code+="=";
@@ -518,7 +518,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 			code+=name;
 		}
 		else {
-			code+="end_points['"+layer.getName()+"']";
+			code+="end_points['"+layer.getTop(0)+"']";
 		}
 		
 		code+="=";
@@ -633,7 +633,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 			code+=name;
 		}
 		else {
-			code+="end_points['"+layer.getName()+"']";
+			code+="end_points['"+layer.getTop(0)+"']";
 		}
 		
 		code+="=";
