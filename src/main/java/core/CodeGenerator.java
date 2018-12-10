@@ -394,7 +394,7 @@ public class CodeGenerator {
 			code+= mixed_scope_header+ tabSpaceAllLines(mixed_scope_code) + "\n";
 			
 			//put the full thing in end_points
-			code += "end_points[" + root + "]=LogitsNasif\n";
+			code += "end_points['" + root + "']=LogitsNasif\n";
 			
 			dictionary.put("code", code);
 			dictionary.put("bottom", null);
@@ -520,8 +520,66 @@ public class CodeGenerator {
 
 	protected String createSimpleLayer(LayerParameter layer, String name,  String bottom, String scope ) {
 		String code="";
+		//check if last_layer
+		if(layer.equals(outputLayer)) {
+			//assume convolution layer
+			ConvolutionParameter typeParam = outputLayer.getConvolutionParam();
+			String s="[";
+			if (typeParam.hasKernelH()) {
+				s+=Integer.toString(typeParam.getKernelH());
+			}
+			else {
+				if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+					s+=Integer.toString(typeParam.getKernelSize(0));
+				}
+				else {
+					s+="7";
+				}
+			}
+			s+=",";
+			if (typeParam.hasKernelW()) {
+				s+=Integer.toString(typeParam.getKernelW());
+			}
+			else {
+				if(typeParam.getKernelSizeCount()>0 && typeParam.getKernelSize(0)>0) {
+					s+=Integer.toString(typeParam.getKernelSize(0));
+				}
+				else {
+					s+="7";
+				}
+			}
+			s+="]";
+			String stride="";
+			if (typeParam.getStrideList().size()>1) {
+				errors.add("more than one stride for: "+layer.getName());
+			}
+			else if(typeParam.getStrideList().size()==1) {
+				stride="stride="+Integer.toString(typeParam.getStride(0));
+			}
+			else {
+				stride="stride=1";
+			}
+			if (bottom!=null) {
+				code+= name + "=slim.conv2d(end_points['"+bottom+"'],num_classes,"+s+","+stride+",scope='"+scope+"')";
+			}
+			else {
+				code+= name + "=slim.conv2d(end_points['"+layer.getBottom(0)+"'],num_classes,"+s+","+stride+",scope='"+scope+"')";
+			}
+			
+			//rest of the logit code
+			if (name==null) {
+				code+="LogitsNasif="+layer.getName()+"\n";
+			}
+			else {
+				code+="LogitsNasif="+name+"\n";
+			}
+			
+			//squeeze
+			//TODO change hardcoding
+			code+="LogitsNasif=tf.squeeze(LogitsNasif, [1, 2], name='SpatialSqueeze')"+"\n";
+		}
 		
-		if (layer.getType().equals("Convolution")) {
+		else if (layer.getType().equals("Convolution")) {
 			code+=createSimpleConvolutionEndPoint(layer,name,bottom,scope);
 		}
 		else if (layer.getType().equals("Pooling")) {
@@ -556,19 +614,7 @@ public class CodeGenerator {
 		}
 		removeHandledLayer(layer);
 		
-		//check if last_layer
-		if(layer.equals(outputLayer)) {
-			if (name==null) {
-				code+="LogitsNasif="+layer.getName()+"\n";
-			}
-			else {
-				code+="LogitsNasif="+name+"\n";
-			}
-			
-			//squeeze
-			//TODO change hardcoding
-			code+="LogitsNasif=tf.squeeze(LogitsNasif, [1, 2], name='SpatialSqueeze')"+"\n";
-		}
+		
 		
 		return code;
 	}

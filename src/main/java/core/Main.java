@@ -16,15 +16,14 @@ import com.google.protobuf.TextFormat;
 import com.google.protobuf.TextFormat.ParseException;
 
 public class Main {
-	//TODO: take input filename from command line argument
-	//static String inputFileName="deploy.prototxt";
+	
 	static String prototxtInput;
 	static File simpleOutput;
 	static File multiplexingOutput;
 	public static void main(String[] args) {
 		
 		// work on given 3 input files
-		String[] myInputFiles=new String[] {"inceptionv1.prototxt","alexnet.prototxt","lenet.prototxt"};
+		String[] myInputFiles=new String[] {"inceptionv1.prototxt"};
 		for (int i=0;i<myInputFiles.length;i++) {
 			generateTensorFlowFiles(myInputFiles[i]);
 		}
