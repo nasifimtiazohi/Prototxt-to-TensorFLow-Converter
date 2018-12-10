@@ -574,15 +574,11 @@ public class CodeGenerator {
 				stride="stride=1";
 			}
 			
-			//handle bottom and generate code
-			if (bottom!=null) {
-				code+= name + "=slim.conv2d(end_points['"+bottom+"'],num_classes,"+s+","+stride+",activation_fn=None,\n" + 
-						"                             normalizer_fn=None,scope='"+scope+"')\n";
-			}
-			else {
+			
+			//bottom is not important. As output layer will always be followed by dropout layer. so always take bottom
 				code+= name + "=slim.conv2d(end_points['"+layer.getBottom(0)+"'],num_classes,"+s+","+stride+",activation_fn=None,\n" + 
 						"                             normalizer_fn=None,scope='"+scope+"')\n";
-			}
+
 			
 			//rest of the logit code
 			if (name==null) {
