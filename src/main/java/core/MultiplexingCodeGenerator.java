@@ -246,7 +246,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 					//no further chaining
 					//just write this one function
 					// this could be done in prior step, but just staying safe with inceptionv1
-					branch_scope_code += createSimpleLayer(branch,branch_name,null, scope);
+					branch_scope_code += createSimpleLayer(branch,branch_name,branch_name, scope);
 				}
 				else if(forward.size()==1){
 					//chaining
@@ -357,7 +357,7 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 			//no further chaining
 			//just write this one function
 			// this could be done in prior step, but just staying safe with inceptionv1
-			code += createSimpleLayer(branch,branch_name,null, scope);
+			code += createSimpleLayer(branch,branch_name,branch_name, scope);
 		}
 		else if(forward.size()==1){
 			//chaining
