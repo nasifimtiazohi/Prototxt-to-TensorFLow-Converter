@@ -205,7 +205,13 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 				//we have a chaining layer forward. 
 				//if it's a convolution layer, then code for the first one would change a bit
 				if (layer.getType().equals("Convolution")) {
-					branch_scope_code+= createSimpleConvolutionEndPointWithConfiguredOutputs(layer, branch_name, "net", scope, concatLayer.getName());
+					try {
+						branch_scope_code+= createSimpleConvolutionEndPointWithConfiguredOutputs(layer, branch_name, "net", scope, concatLayer.getName());
+					}
+					catch(Exception e) {
+						System.out.println(e);
+						System.out.println(layer);
+					}
 				}
 				else {
 					branch_scope_code += createSimpleLayer(layer, branch_name,"net",scope);
@@ -465,10 +471,15 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		
 		//stride
 		//assuming single stride
-		if (typeParam.getStrideList().size()!=1) {
+		if (typeParam.getStrideList().size()>1) {
 			errors.add("more than one stride for: "+layer.getName());
 		}
-		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		else if(typeParam.getStrideList().size()==1) {
+			arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		}
+		else {
+			arguments.add("stride=1");
+		}
 		
 		//scope
 		if (scope!=null) {
@@ -571,10 +582,15 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		
 		//stride
 		//assuming single stride
-		if (typeParam.getStrideList().size()!=1) {
+		if (typeParam.getStrideList().size()>1) {
 			errors.add("more than one stride for: "+layer.getName());
 		}
-		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		else if(typeParam.getStrideList().size()==1) {
+			arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		}
+		else {
+			arguments.add("stride=1");
+		}
 		
 		//scope
 		if (scope!=null) {
@@ -673,7 +689,12 @@ public class MultiplexingCodeGenerator extends CodeGenerator{
 		arguments.add(s);
 		
 		//stride
-		arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		if(typeParam.hasStride()) {
+			arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		}
+		else {
+			arguments.add("stride=1");
+		}
 		
 		//scope
 		if (scope!=null) {

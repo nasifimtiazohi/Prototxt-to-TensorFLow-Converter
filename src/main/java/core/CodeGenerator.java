@@ -68,11 +68,17 @@ public class CodeGenerator {
 
 	protected String changeImageSize() {
 		String code ="\n \n ### change the default image_size based on the input image size specified in prototxt ### \n";
-		
-		List<BlobShape> blobs=net.getInputShapeList();
-		BlobShape blob=blobs.get(blobs.size()-1);
-		List<Long> dims=blob.getDimList();
-		Long dim=dims.get(blob.getDimCount()-1);
+		Long dim=(long) 0;
+		try {
+			List<BlobShape> blobs=net.getInputShapeList();
+			BlobShape blob=blobs.get(blobs.size()-1);
+			List<Long> dims=blob.getDimList();
+			dim=dims.get(blob.getDimCount()-1);
+		}
+		catch (Exception e){
+			System.out.println(e);
+		}
+
 		
 		code+= net.getName()+".default_image_size = "+Long.toString(dim);
 		return code;
@@ -680,10 +686,16 @@ public class CodeGenerator {
 		
 		//stride
 		//assuming single stride
-		if (typeParam.getStrideList().size()!=1) {
+		if (typeParam.getStrideList().size()>1) {
 			errors.add("more than one stride for: "+layer.getName());
 		}
-		arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		else if(typeParam.getStrideList().size()==1) {
+			arguments.add("stride="+Integer.toString(typeParam.getStride(0)));
+		}
+		else {
+			arguments.add("stride=1");
+		}
+		
 		
 		//scope
 		if (scope!=null) {
@@ -792,7 +804,12 @@ public class CodeGenerator {
 		arguments.add(s);
 		
 		//stride
-		arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		if(typeParam.hasStride()) {
+			arguments.add("stride="+Integer.toString(typeParam.getStride()));
+		}
+		else {
+			arguments.add("stride=1");
+		}
 		
 		//scope
 		if (scope!=null) {
