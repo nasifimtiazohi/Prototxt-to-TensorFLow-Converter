@@ -99,8 +99,8 @@ public class Main {
 	}
 	private static void InstantiateOutputFiles(String inputFileName) {
 		String filenameWithoutExtension=inputFileName.substring(0, inputFileName.length()-9);
-		simpleOutput=new File("simple"+filenameWithoutExtension+".py");
-		multiplexingOutput=new File("multiplexing"+filenameWithoutExtension+".py");
+		simpleOutput=new File(filenameWithoutExtension+"_simple"+".py");
+		multiplexingOutput=new File(filenameWithoutExtension+"_multiplexing"+".py");
 	}
 	
 }
