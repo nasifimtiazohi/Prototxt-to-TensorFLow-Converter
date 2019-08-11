@@ -2,7 +2,7 @@
 Compiler to convert Prototxt to TensorFlow python
 
 ## Structure of the Code
-src/main/jaca contains 2 packages - 1) core (written by me) 2) caffe (contains Caffe.java created from protoc)
+src/main/java contains 2 packages - 1) core (written by me) 2) caffe (contains Caffe.java created from protoc)
 
 core package contains 3 files -
 1) Main.java - takes input file, instantiate code generator classes, and write the output file
